@@ -1,4 +1,6 @@
-streamlit
+# Streamlit Community Cloud deployment dependencies
+# Select Python 3.12 in the Streamlit Community Cloud app settings.
+streamlit==1.66.1
 tensorflow==2.21.0
-numpy
-pillow
+numpy>=1.26,<3
+Pillow>=10,<13
