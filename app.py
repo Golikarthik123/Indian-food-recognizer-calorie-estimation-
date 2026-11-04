@@ -127,7 +127,7 @@ if uploaded_file is not None:
         st.image(
             image,
             caption="Uploaded food image",
-            use_container_width=True,
+            width="stretch",
         )
 
         if st.button("🔍 Predict Food", type="primary"):
