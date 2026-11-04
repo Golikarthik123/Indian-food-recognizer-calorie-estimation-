@@ -1,180 +1,181 @@
-
-import streamlit as st
-print("CHECKPOINT 1: App started", flush=True)
-
-st.set_page_config(
-    page_title="Indian Food Recognizer",
-    page_icon="🍛",
-    layout="centered"
-)
-
-print("CHECKPOINT 2: Before TensorFlow import", flush=True)
-import tensorflow as tf
-import numpy as np
-import pickle
-from PIL import Image
+from io import BytesIO
 from pathlib import Path
-print("CHECKPOINT 3: TensorFlow imported", flush=True)
+import pickle
 
-# --------------------------------------------------
-# 1. PAGE CONFIGURATION
-# --------------------------------------------------
+import numpy as np
+import streamlit as st
+from PIL import Image, ImageOps, UnidentifiedImageError
 
+# Streamlit page configuration must be the first Streamlit command.
 st.set_page_config(
     page_title="Indian Food Recognizer",
     page_icon="🍛",
-    layout="centered"
+    layout="centered",
 )
 
-# --------------------------------------------------
-# 2. PROJECT FILE PATHS
-# --------------------------------------------------
-
-BASE_DIR = Path(__file__).parent
-
+BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "indian_food_recognizer_finetuned_final.keras"
 CLASS_NAMES_PATH = BASE_DIR / "class_names.pkl"
+IMAGE_SIZE = (224, 224)
+EXPECTED_NUM_CLASSES = 20
 
 
-# --------------------------------------------------
-# 3. LOAD TRAINED MODEL
-# --------------------------------------------------
-
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model():
-    print("CHECKPOINT 4: Loading model", flush=True)
-    model = tf.keras.models.load_model(MODEL_PATH)
-    print("CHECKPOINT 5: Model loaded", flush=True)
+    """Load and cache the trained fine-tuned MobileNetV2 model."""
+    if not MODEL_PATH.is_file():
+        raise FileNotFoundError(
+            f"Model file not found: {MODEL_PATH.name}. "
+            "Make sure it is committed to the GitHub repository."
+        )
+
+    model = __import__("tensorflow").keras.models.load_model(MODEL_PATH)
+
+    output_shape = model.output_shape
+    if isinstance(output_shape, list):
+        raise ValueError("This app expects a model with one output tensor.")
+
+    if len(output_shape) != 2 or output_shape[-1] != EXPECTED_NUM_CLASSES:
+        raise ValueError(
+            f"Unexpected model output shape: {output_shape}. "
+            f"Expected (None, {EXPECTED_NUM_CLASSES})."
+        )
+
     return model
 
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_class_names():
-    with open(CLASS_NAMES_PATH, "rb") as f:
-        return pickle.load(f)
+    """Load and cache the class labels saved during model training."""
+    if not CLASS_NAMES_PATH.is_file():
+        raise FileNotFoundError(
+            f"Class-label file not found: {CLASS_NAMES_PATH.name}."
+        )
+
+    # This pickle file must come from this trusted project repository.
+    with CLASS_NAMES_PATH.open("rb") as file:
+        names = pickle.load(file)
+
+    if not isinstance(names, (list, tuple)):
+        raise TypeError("class_names.pkl must contain a list or tuple.")
+
+    if len(names) != EXPECTED_NUM_CLASSES:
+        raise ValueError(
+            f"Expected {EXPECTED_NUM_CLASSES} class names, found {len(names)}."
+        )
+
+    if not all(isinstance(name, str) and name.strip() for name in names):
+        raise ValueError("Every class name must be a non-empty string.")
+
+    return list(names)
 
 
-model = load_model()
-class_names = load_class_names()
+def predict_food(image, model, class_names):
+    """Apply the same MobileNetV2 preprocessing used during training."""
+    import tensorflow as tf
 
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    image = image.resize(IMAGE_SIZE)
 
-# --------------------------------------------------
-# 4. FOOD PREDICTION FUNCTION
-# --------------------------------------------------
-
-def predict_food(image):
-
-    # Convert image to RGB
-    image = image.convert("RGB")
-
-    # Resize image
-    image = image.resize((224, 224))
-
-    # Convert image into NumPy array
-    image_array = np.array(image).astype(np.float32)
-
-    # MobileNetV2 preprocessing
+    image_array = np.asarray(image, dtype=np.float32)
     image_array = tf.keras.applications.mobilenet_v2.preprocess_input(
         image_array
     )
-
-    # Add batch dimension
     image_batch = np.expand_dims(image_array, axis=0)
 
-    # Model prediction
-    predictions = model.predict(image_batch, verbose=0)[0]
+    predictions = np.asarray(model.predict(image_batch, verbose=0))[0]
 
-    # Get Top-3 predictions
-    top3_indices = np.argsort(predictions)[-3:][::-1]
+    if predictions.ndim != 1 or predictions.shape[0] != len(class_names):
+        raise ValueError(
+            "The model prediction count does not match the class-name count."
+        )
 
-    return predictions, top3_indices
+    if not np.all(np.isfinite(predictions)):
+        raise ValueError("The model returned invalid prediction values.")
+
+    top_indices = np.argsort(predictions)[-3:][::-1]
+    return predictions, top_indices
 
 
-# --------------------------------------------------
-# 5. STREAMLIT APPLICATION INTERFACE
-# --------------------------------------------------
+# ------------------------- Application interface -------------------------
 
 st.title("🍛 Indian Food Recognizer")
-
 st.markdown(
     """
-    ### Welcome to Indian Food Recognizer!
-
-    Upload an image of food and our fine-tuned
-    **MobileNetV2 Deep Learning model** will identify it.
-
-    **Supported categories:** 20 food classes.
+    Upload a food image and the fine-tuned **MobileNetV2** model will
+    predict which of the 20 supported food categories it belongs to.
     """
 )
 
-st.divider()
-
-# Image uploader
-uploaded_file = st.file_uploader(
-    "📤 Upload a Food Image",
-    type=["jpg", "jpeg", "png"]
+st.info(
+    "Supported categories include burger, dosa, idli, samosa, "
+    "paani puri, biryani-style dishes and more."
 )
 
-
-# --------------------------------------------------
-# 6. DISPLAY IMAGE AND PREDICTIONS
-# --------------------------------------------------
+uploaded_file = st.file_uploader(
+    "📤 Upload a food image",
+    type=["jpg", "jpeg", "png"],
+    help="Choose a JPG, JPEG or PNG image.",
+)
 
 if uploaded_file is not None:
+    try:
+        image_bytes = uploaded_file.getvalue()
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
 
-    image = Image.open(uploaded_file)
-
-    st.image(
-        image,
-        caption="Uploaded Food Image",
-        use_container_width=True
-    )
-
-    if st.button("🔍 Predict Food", type="primary"):
-
-        with st.spinner("Analyzing your food image..."):
-
-            predictions, top3_indices = predict_food(image)
-
-            predicted_class = class_names[top3_indices[0]]
-
-            confidence = float(
-                predictions[top3_indices[0]] * 100
-            )
-
-        # Final prediction
-        st.success(
-            f"Predicted Food: {predicted_class}"
+        st.image(
+            image,
+            caption="Uploaded food image",
+            use_container_width=True,
         )
 
-        st.metric(
-            label="Prediction Confidence",
-            value=f"{confidence:.2f}%"
-        )
+        if st.button("🔍 Predict Food", type="primary"):
+            try:
+                with st.spinner("Loading the model and analyzing the image..."):
+                    model = load_model()
+                    class_names = load_class_names()
+                    predictions, top_indices = predict_food(
+                        image, model, class_names
+                    )
 
-        st.divider()
+                predicted_index = int(top_indices[0])
+                predicted_class = class_names[predicted_index]
+                confidence = float(predictions[predicted_index])
 
-        # Top-3 predictions
-        st.subheader("🏆 Top-3 Predictions")
+                st.success(f"Predicted food: **{predicted_class}**")
+                st.metric(
+                    label="Prediction confidence",
+                    value=f"{confidence * 100:.2f}%",
+                )
 
-        for rank, idx in enumerate(top3_indices, start=1):
+                st.subheader("🏆 Top-3 predictions")
+                for rank, index in enumerate(top_indices, start=1):
+                    probability = float(predictions[index])
+                    st.write(
+                        f"**{rank}. {class_names[int(index)]}** — "
+                        f"{probability * 100:.2f}%"
+                    )
+                    st.progress(
+                        min(max(probability, 0.0), 1.0)
+                    )
 
-            probability = float(predictions[idx])
+                st.caption(
+                    "Predictions are generated by the fine-tuned "
+                    "MobileNetV2 model. Confidence is the model's "
+                    "predicted class probability, not a guarantee."
+                )
 
-            st.write(
-                f"**{rank}. {class_names[idx]}** — "
-                f"{probability * 100:.2f}%"
-            )
+            except Exception as error:
+                st.error(
+                    "The prediction could not be completed. "
+                    "Check that the model and class_names.pkl files "
+                    "are present and compatible."
+                )
+                st.exception(error)
 
-            st.progress(probability)
-
-        st.caption(
-            "Predictions are generated using the fine-tuned "
-            "MobileNetV2 model."
-        )
+    except (UnidentifiedImageError, OSError, ValueError):
+        st.error("The uploaded file could not be read as a valid image.")
 
 st.divider()
-
-st.caption(
-    "Built with Python, TensorFlow, MobileNetV2 and Streamlit."
-)
+st.caption("Built with Python, TensorFlow, MobileNetV2 and Streamlit.")
