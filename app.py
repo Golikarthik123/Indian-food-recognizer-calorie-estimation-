@@ -1,10 +1,20 @@
 
 import streamlit as st
+print("CHECKPOINT 1: App started", flush=True)
+
+st.set_page_config(
+    page_title="Indian Food Recognizer",
+    page_icon="🍛",
+    layout="centered"
+)
+
+print("CHECKPOINT 2: Before TensorFlow import", flush=True)
 import tensorflow as tf
 import numpy as np
 import pickle
 from PIL import Image
 from pathlib import Path
+print("CHECKPOINT 3: TensorFlow imported", flush=True)
 
 # --------------------------------------------------
 # 1. PAGE CONFIGURATION
@@ -32,7 +42,10 @@ CLASS_NAMES_PATH = BASE_DIR / "class_names.pkl"
 
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(MODEL_PATH)
+    print("CHECKPOINT 4: Loading model", flush=True)
+    model = tf.keras.models.load_model(MODEL_PATH)
+    print("CHECKPOINT 5: Model loaded", flush=True)
+    return model
 
 
 @st.cache_data
