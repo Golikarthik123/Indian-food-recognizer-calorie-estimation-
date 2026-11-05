@@ -144,7 +144,7 @@ def show_nutrition_estimator(food_class, nutrition_data):
             "It may not represent every version of this dish."
         )
 
-    if food_class in {"burger", "pakode"} and implied_weight is not None and implied_weight > 400:
+    if implied_weight is not None and implied_weight > 400:
         st.warning(
             f"The mapped source serving implies approximately {implied_weight:.0f} g "
             "and has an unusually high calorie estimate. This may be an oversized "
