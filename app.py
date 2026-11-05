@@ -224,7 +224,7 @@ def show_nutrition_estimator(food_class, nutrition_data):
                 f"({implied_weight:.1f} g). These estimates may be less precise."
             )
         else:
-            extra_values = {key: None for key, _, _ in EXTRA_NUTRIENTS}
+            extra_values = {key: None for _, _, key in EXTRA_NUTRIENTS}
             st.caption(
                 "Main nutrients use per-100g values. Additional nutrients are "
                 "N/A because this record has no usable serving-weight basis "
