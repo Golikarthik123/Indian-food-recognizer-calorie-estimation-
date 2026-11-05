@@ -279,7 +279,7 @@ def show_nutrition_estimator(food_class, nutrition_data):
 
 st.title("🍛 Indian Food Recognizer")
 st.markdown(
-    "Upload a food image. The fine-tuned **MobileNetV2** model predicts "
+    "Upload a food image or take a photo with your camera. The fine-tuned **MobileNetV2** model predicts "
     "which of the 20 supported food categories it may belong to."
 )
 st.info(
@@ -287,19 +287,37 @@ st.info(
     "correct food before viewing its nutrition estimate."
 )
 
-uploaded_file = st.file_uploader(
-    "📤 Upload a food image",
-    type=["jpg", "jpeg", "png"],
-    help="Choose a JPG, JPEG or PNG image.",
+input_method = st.radio(
+    "Choose how to provide your food image:",
+    ["Upload image", "Use camera"],
+    horizontal=True,
+    key="image_input_method",
 )
 
-if uploaded_file is not None:
+if input_method == "Upload image":
+    image_file = st.file_uploader(
+        "📤 Upload a food image",
+        type=["jpg", "jpeg", "png"],
+        help="Choose a JPG, JPEG or PNG image.",
+        key="food_image_upload",
+    )
+else:
+    image_file = st.camera_input(
+        "📷 Take a photo of your food",
+        key="food_camera_capture",
+    )
+
+if image_file is not None:
     try:
-        image_bytes = uploaded_file.getvalue()
+        image_bytes = image_file.getvalue()
         image = Image.open(BytesIO(image_bytes))
         image.load()
         image = ImageOps.exif_transpose(image).convert("RGB")
-        st.image(image, caption="Uploaded food image", width="stretch")
+        st.image(
+            image,
+            caption="Food image ready for recognition",
+            width="stretch",
+        )
 
         if st.button("🔍 Predict Food", type="primary"):
             try:
@@ -311,7 +329,9 @@ if uploaded_file is not None:
                     (class_names[int(i)], float(predictions[int(i)]))
                     for i in top_indices
                 ]
-                st.session_state["food_image_key"] = uploaded_file.name
+                st.session_state["food_image_key"] = (
+                    f"{input_method}:{getattr(image_file, 'name', 'camera_capture')}"
+                )
             except Exception as error:
                 st.error("The prediction could not be completed.")
                 st.exception(error)
@@ -339,7 +359,8 @@ if uploaded_file is not None:
             show_nutrition_estimator(selected_food, nutrition_data)
 
     except (UnidentifiedImageError, OSError, ValueError):
-        st.error("The uploaded file could not be read as a valid image.")
+        st.error("The selected image could not be read. Please upload or capture "
+                 "a valid JPG, JPEG or PNG image.")
 
 st.divider()
 st.caption("Built with Python, TensorFlow, MobileNetV2 and Streamlit.")
