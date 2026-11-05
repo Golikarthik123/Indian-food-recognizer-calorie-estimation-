@@ -195,12 +195,41 @@ def show_nutrition_estimator(food_class, nutrition_data):
             key: (value * factor if value is not None else None)
             for key, value in core_values.items()
         }
-        st.caption(
-            "Core nutrients are calculated from the CSV's per-100g values. "
-            "Additional nutrients are shown as N/A because this file does not "
-            "contain per-100g values for them."
-        )
-        extra_values = {key: None for _, _, key in EXTRA_NUTRIENTS}
+        # Additional nutrients are stored per mapped serving in this CSV.
+        # Where the mapped serving weight is available, estimate custom-weight
+        # values by scaling those per-serving values by weight.
+        # This is an estimate, not an independently measured per-100g value.
+        extra_per_serving_keys = {
+            "fibre": "fibre_per_serving_g",
+            "sugars": "free_sugars_per_serving_g",
+            "sodium": "sodium_per_serving_mg",
+            "calcium": "calcium_per_serving_mg",
+            "iron": "iron_per_serving_mg",
+            "saturated_fat": "saturated_fat_per_serving_g",
+        }
+        extra_values = {}
+        if implied_weight is not None and implied_weight > 0:
+            weight_factor = weight_g / implied_weight
+            for nutrient, csv_key in extra_per_serving_keys.items():
+                per_serving_value = as_number(row, csv_key)
+                extra_values[nutrient] = (
+                    per_serving_value * weight_factor
+                    if per_serving_value is not None
+                    else None
+                )
+            st.caption(
+                "Main nutrients use the source's per-100g values. Additional "
+                "nutrients are estimated by scaling the source's per-serving "
+                "values using the mapped serving weight "
+                f"({implied_weight:.1f} g). These estimates may be less precise."
+            )
+        else:
+            extra_values = {key: None for key, _, _ in EXTRA_NUTRIENTS}
+            st.caption(
+                "Main nutrients use per-100g values. Additional nutrients are "
+                "N/A because this record has no usable serving-weight basis "
+                "for scaling its per-serving nutrient values."
+            )
         portion_label = f"{weight_g:.0f} g"
         source_scale = None
     else:
